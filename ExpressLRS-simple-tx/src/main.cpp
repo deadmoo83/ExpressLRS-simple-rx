@@ -1,18 +1,3 @@
-/*
-   RadioLib SX127x Channel Activity Detection Example
-   This example scans the current LoRa channel and detects
-   valid LoRa preambles. Preamble is the first part of
-   LoRa transmission, so this can be used to check
-   if the LoRa channel is free, or if you should start
-   receiving a message.
-   Other modules from SX127x/RFM9x family can also be used.
-   For default module settings, see the wiki page
-   https://github.com/jgromes/RadioLib/wiki/Default-configuration#sx127xrfm9x---lora-modem
-   For full API reference, see the GitHub Pages
-   https://jgromes.github.io/RadioLib/
-*/
-
-// include the library
 #include <RadioLib.h>
 
 #define TXRXBuffSize 16
@@ -80,10 +65,6 @@ const float FHSSfreqs[] = {
 // RESET pin: 4
 // DIO1 pin:  NC
 SX1276 radio = new Module(8, 7, 4, RADIOLIB_NC);
-
-// or using RadioShield
-// https://github.com/jgromes/RadioShield
-//SX1276 radio = RadioShield.ModuleA;
 
 // flag to indicate that a packet was received
 volatile bool receivedFlag = false;
