@@ -1,70 +1,134 @@
+#include <Arduino.h>
+#if defined(PLATFORM_LORA32U4)
 #include <RadioLib.h>
+#elif defined(PLATFORM_CUBECELL)
+#include <radio/radio.h>
+#endif
 
-#define TXRXBuffSize 16
-uint8_t RXdataBuffer[TXRXBuffSize];
+#define RXBuffSize 8
+uint8_t RXdataBuffer[RXBuffSize];
  
-#define FREQ_TIME_MS 5000
+#define FREQ_TIME_MS 10000
 #define FREQ_COUNT 40
 uint32_t _freqExpire = 0;
 uint8_t _freqIndex = 0;
+
+#if defined(PLATFORM_LORA32U4)
 const float FHSSfreqs[] = {
-    903.500000,
-    904.100000,
-    904.700000,
-    905.300000,
+  903.500000,
+  904.100000,
+  904.700000,
+  905.300000,
 
-    905.900000,
-    906.500000,
-    907.100000,
-    907.700000,
+  905.900000,
+  906.500000,
+  907.100000,
+  907.700000,
 
-    908.300000,
-    908.900000,
-    909.500000,
-    910.100000,
+  908.300000,
+  908.900000,
+  909.500000,
+  910.100000,
 
-    910.700000,
-    911.300000,
-    911.900000,
-    912.500000,
+  910.700000,
+  911.300000,
+  911.900000,
+  912.500000,
 
-    913.100000,
-    913.700000,
-    914.300000,
-    914.900000,
+  913.100000,
+  913.700000,
+  914.300000,
+  914.900000,
 
-    915.500000,
-    916.100000,
-    916.700000,
-    917.300000,
+  915.500000,
+  916.100000,
+  916.700000,
+  917.300000,
 
-    917.900000,
-    918.500000,
-    919.100000,
-    919.700000,
+  917.900000,
+  918.500000,
+  919.100000,
+  919.700000,
 
-    920.300000,
-    920.900000,
-    921.500000,
-    922.100000,
+  920.300000,
+  920.900000,
+  921.500000,
+  922.100000,
 
-    922.700000,
-    923.300000,
-    923.900000,
-    924.500000,
+  922.700000,
+  923.300000,
+  923.900000,
+  924.500000,
 
-    925.100000,
-    925.700000,
-    926.300000,
-    926.900000
+  925.100000,
+  925.700000,
+  926.300000,
+  926.900000
 };
+#elif defined(PLATFORM_CUBECELL)
+const uint32_t FHSSfreqs[] = {
+  903500000,
+  904100000,
+  904700000,
+  905300000,
 
+  905900000,
+  906500000,
+  907100000,
+  907700000,
+
+  908300000,
+  908900000,
+  909500000,
+  910100000,
+
+  910700000,
+  911300000,
+  911900000,
+  912500000,
+
+  913100000,
+  913700000,
+  914300000,
+  914900000,
+
+  915500000,
+  916100000,
+  916700000,
+  917300000,
+
+  917900000,
+  918500000,
+  919100000,
+  919700000,
+
+  920300000,
+  920900000,
+  921500000,
+  922100000,
+
+  922700000,
+  923300000,
+  923900000,
+  924500000,
+
+  925100000,
+  925700000,
+  926300000,
+  926900000
+};
+#endif
+
+#if defined(PLATFORM_LORA32U4)
 // SX1276 has the following connections:
 // NSS pin:   8
 // DIO0 pin:  7
 // RESET pin: 4
 // DIO1 pin:  NC
 SX1276 radio = new Module(8, 7, 4, RADIOLIB_NC);
+#elif defined(PLATFORM_CUBECELL)
+RadioEvents_t RadioEvents;
+#endif
 
 // flag to indicate that a packet was received
 volatile bool receivedFlag = false;
@@ -72,6 +136,7 @@ volatile bool receivedFlag = false;
 // disable interrupt when it's not needed
 volatile bool enableInterrupt = true;
 
+#if defined(PLATFORM_LORA32U4)
 // this function is called when a complete packet
 // is received by the module
 // IMPORTANT: this function MUST be 'void' type
@@ -85,13 +150,42 @@ void setFlag(void) {
   // we got a packet, set the flag
   receivedFlag = true;
 }
+#elif defined(PLATFORM_CUBECELL)
+int16_t RXrssi;
+int8_t RXsnr;
+
+void OnRxDone( uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr )
+{
+  memcpy(RXdataBuffer, payload, size );
+  RXrssi=rssi;
+  RXsnr=snr;
+
+  // check if the interrupt is enabled
+  if(!enableInterrupt) {
+    return;
+  }
+
+  // we got a packet, set the flag
+  receivedFlag = true;
+}
+
+bool errorFlag = false;
+
+void OnRxError()
+{
+  errorFlag = true;
+}
+
+#endif
 
 void setup() {
   while(!Serial);
   Serial.begin(115200);
 
   // initialize SX1278 with default settings
-  Serial.print(F("[SX1276] Initializing ... "));
+  Serial.print(F("[SX12xx] Initializing ... "));
+
+#if defined(PLATFORM_LORA32U4)
   int state = radio.begin(FHSSfreqs[_freqIndex], 500.0, 6, 7);
   if (state == ERR_NONE) {
     Serial.println(F("success!"));
@@ -101,13 +195,15 @@ void setup() {
     while (true);
   }
 
+  //radio.invertIQ(true);
+
   // set the function that will be called
   // when new packet is received
   radio.setDio0Action(setFlag);
 
   // start listening for LoRa packets
   Serial.print(F("[SX1276] Starting to listen ... "));
-  state = radio.startReceive(TXRXBuffSize);
+  state = radio.startReceive(RXBuffSize);
   if (state == ERR_NONE) {
     Serial.println(F("success!"));
   } else {
@@ -115,6 +211,37 @@ void setup() {
     Serial.println(state);
     while (true);
   }
+#elif defined(PLATFORM_CUBECELL)
+#define LORA_BANDWIDTH                              2         // [0: 125 kHz,
+                                                              //  1: 250 kHz,
+                                                              //  2: 500 kHz,
+                                                              //  3: Reserved]
+#define LORA_SPREADING_FACTOR                       6         // [SF7..SF12]
+#define LORA_CODINGRATE                             3         // [1: 4/5,
+                                                              //  2: 4/6,
+                                                              //  3: 4/7,
+                                                              //  4: 4/8]
+#define LORA_PREAMBLE_LENGTH                        8         // Same for Tx and Rx
+#define LORA_SYMBOL_TIMEOUT                         0         // Symbols
+#define LORA_FIX_LENGTH_PAYLOAD_ON                  true
+#define LORA_IQ_INVERSION_ON                        false
+
+RadioEvents.RxDone = OnRxDone;
+RadioEvents.RxError = OnRxError;
+Radio.Init( &RadioEvents );
+Radio.SetChannel( FHSSfreqs[_freqIndex] );
+	
+Radio.SetRxConfig( MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
+                   LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
+                   LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON,
+                   RXBuffSize, true, 0, 0, LORA_IQ_INVERSION_ON, true );
+
+Serial.println(F("success!"));
+
+Radio.Rx( 0 );
+
+Serial.println(F("[SX1262] into RX mode"));
+#endif 
 }
 
 #define RC_DATA_PACKET 0b00
@@ -234,27 +361,15 @@ void UnpackChannelDataHybridSwitch8()
     }
 }
 
-void loop() {
-  // check if the flag is set
-  if(receivedFlag) {
-    // disable the interrupt service routine while
-    // processing the data
-    enableInterrupt = false;
-
-    // reset flag
-    receivedFlag = false;
-
-    // you can also read received data as byte array
-    int state = radio.readData(RXdataBuffer, TXRXBuffSize);
-    
-    if (state == ERR_NONE) {
+void printData()
+{
       // packet was successfully received
-      Serial.println(F("[SX1276] Received packet!"));
+      Serial.println(F("[SX12xx] Received packet!"));
 
       Serial.println(FHSSfreqs[_freqIndex]);
 
       // print data of the packet
-      Serial.print(F("[SX1276] Data:\t\t"));
+      Serial.print(F("[SX12xx] Data:\t\t"));
       uint8_t type = RXdataBuffer[0] & 0b11;
       switch(type)
       {
@@ -284,7 +399,7 @@ void loop() {
         Serial.print(PackedRCdataOut.ch10);
         Serial.print(F(", "));
         Serial.print(PackedRCdataOut.ch11);
-        Serial.print(F(", "));
+        Serial.println();
         break;
       case MSP_DATA_PACKET:
         Serial.println(F("MSP_DATA_PACKET"));
@@ -298,7 +413,27 @@ void loop() {
       default:
         Serial.println(F("UNKNOWN"));
       }
- 
+}
+
+
+void loop() {
+  // check if the flag is set
+  if(receivedFlag) {
+    // disable the interrupt service routine while
+    // processing the data
+    enableInterrupt = false;
+
+    // reset flag
+    receivedFlag = false;
+
+#if defined(PLATFORM_LORA32U4)
+    // you can also read received data as byte array
+    int state = radio.readData(RXdataBuffer, RXBuffSize);
+    
+    if (state == ERR_NONE) {
+
+      printData();
+      
       // print RSSI (Received Signal Strength Indicator)
       Serial.print(F("[SX1276] RSSI:\t\t"));
       Serial.print(radio.getRSSI());
@@ -326,19 +461,48 @@ void loop() {
     }
 
     // put module back to listen mode
-    radio.startReceive(TXRXBuffSize);
+    radio.startReceive(RXBuffSize);
+#elif defined(PLATFORM_CUBECELL)
+    printData();
+    
+    // print RSSI (Received Signal Strength Indicator)
+    Serial.print(F("[SX1262] RSSI:\t\t"));
+    Serial.print(RXrssi);
+    Serial.println(F(" dBm"));
+
+    // print SNR (Signal-to-Noise Ratio)
+    Serial.print(F("[SX1262] SNR:\t\t"));
+    Serial.print(RXsnr);
+    Serial.println(F(" dB"));
+
+    Radio.Rx( 0 );
+#endif
 
     // we're ready to receive more packets,
     // enable interrupt service routine
     enableInterrupt = true;
   }
 
+#if defined(PLATFORM_CUBECELL)
+  else if (errorFlag)
+  {
+    enableInterrupt = false;
+
+    // reset flag
+    errorFlag = false;
+
+    // packet was received, but is malformed
+    Serial.println(F("[SX1262] error!"));
+
+    Radio.Rx( 0 );
+
+    enableInterrupt = true;
+  }
+#endif
+
   // Change frequency if it is time
   if (millis() > _freqExpire)
   {
-
-    radio.standby();
-
     _freqExpire = millis() + FREQ_TIME_MS;
     _freqIndex++;
 
@@ -347,7 +511,18 @@ void loop() {
         _freqIndex = 0;
     }
 
+#if defined(PLATFORM_LORA32U4)
+    radio.standby();
     radio.setFrequency(FHSSfreqs[_freqIndex]);
-    radio.startReceive(TXRXBuffSize);
+    radio.startReceive(RXBuffSize);
+#elif defined(PLATFORM_CUBECELL)
+    Radio.Standby();
+    Radio.SetChannel(FHSSfreqs[_freqIndex]);
+    Radio.Rx( 0 );
+#endif
   }
+
+#if defined(PLATFORM_CUBECELL)
+    Radio.IrqProcess();
+#endif
 }
